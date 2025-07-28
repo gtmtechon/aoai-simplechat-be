@@ -1,4 +1,4 @@
 #pip install -r requirements.txt
-Flask
-Flask-CORS
-openai
+Flask==2.3.3
+Flask-Cors==4.0.0
+openai==1.35.13
