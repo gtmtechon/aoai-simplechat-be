@@ -7,15 +7,6 @@ import uuid
 import time # 지수 백오프를 위한 time 모듈 추가
 
 app = Flask(__name__)
-
-FRONTEND_ORIGINS = [
-    "https://victorious-forest-0bfc54200.2.azurestaticapps.net",
-    "http://localhost:3000"  # 로컬 개발용
-    # 필요하다면 다른 개발/테스트 Origin도 추가
-    # 다른 Origin이 있다면 추가
-]
-CORS(app, resources={r"/*": {"origins": FRONTEND_ORIGINS}})
-
 CORS(app) # 모든 경로에 대해 CORS 허용
 
 # --- Azure OpenAI Service 설정 ---
