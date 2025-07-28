@@ -7,8 +7,18 @@ import time
 import json
 from openai.error import OpenAIError  # OpenAI 오류 핸들링
 
-app = Flask(__name__)
-CORS(app)  # 모든 경로에 대해 CORS 허용
+# --- CORS 설정 시작 ---
+# 배포된 Azure Static Web App의 Origin URL을 여기에 추가합니다.
+# 여러 Origin을 허용하려면 콤마로 구분하여 리스트 형태로 전달합니다.
+FRONTEND_ORIGINS = [
+    "https://victorious-forest-0bfc54200.2.azurestaticapps.net",
+    # 필요하다면 다른 개발/테스트 Origin도 추가
+    # "http://localhost:3000" # 로컬 개발용
+]
+
+CORS(app, resources={r"/*": {"origins": FRONTEND_ORIGINS}})
+# CORS(app) # 기존의 모든 Origin 허용 설정은 주석 처리 또는 제거
+# --- CORS 설정 끝 ---
 
 # --- Azure OpenAI Service 설정 ---
 try:
