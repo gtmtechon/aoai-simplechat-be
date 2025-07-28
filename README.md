@@ -21,3 +21,10 @@ PYTHON_ENABLE_ONLINE_BUILD: true (App Service에서 빌드를 수행하도록 �
 Startup Command: gunicorn --bind 0.0.0.0 --timeout 600 --workers 2 app:app (Gunicorn을 사용하여 Flask 앱 실행. app:app은 app.py 파일 내의 Flask 앱 인스턴스 이름이 app임을 의미합니다. 필요시 workers 수를 조정할 수 있습니다.)
 
 저장을 클릭합니다.
+
+
+
+
+=============
+pip install -r requirements.txt
+uvicorn main:app --reload
