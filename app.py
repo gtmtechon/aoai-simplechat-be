@@ -16,7 +16,7 @@ CORS(app) # 모든 경로에 대해 CORS 허용
 try:
     openai.api_type = "azure"
     openai.api_base = os.getenv("AZURE_OPENAI_ENDPOINT")
-    openai.api_version = "2024-02-15-preview" # 최신 API 버전 확인 및 업데이트
+    openai.api_version = "2024-12-01-preview" # 최신 API 버전 확인 및 업데이트
     openai.api_key = os.getenv("AZURE_OPENAI_API_KEY")
     DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
@@ -114,4 +114,4 @@ def health_check():
 if __name__ == '__main__':
     # 로컬 테스트를 위한 실행 (프로덕션에서는 Gunicorn 등 WSGI 서버 사용)
     # App Service는 Gunicorn을 자동으로 사용합니다.
-    app.run(host='0.0.0.0', port=os.getenv('PORT', 8000))
+    app.run(host='0.0.0.0', port=os.getenv('WEBSITES_PORT', 8000))
