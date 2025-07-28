@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
+from flask_cors import CORS
 from pydantic import BaseModel
 import openai
 import os
@@ -13,15 +13,16 @@ deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
 
 # FastAPI 초기화
 app = FastAPI()
+CORS(app) # 모든 경로에 대해 CORS 허용
 
 # CORS 설정 (필요시 수정)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 배포 시에는 도메인 제한 권장
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # 배포 시에는 도메인 제한 권장
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # 요청 형식 정의
 class ChatRequest(BaseModel):
