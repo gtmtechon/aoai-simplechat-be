@@ -1,18 +1,15 @@
-# app.py
-from flask import Flask, request, jsonify
-from flask_cors import CORS # CORS 문제를 해결하기 위해 Flask-CORS 라이브러리 사용
+from flask import Flask, request, jsonify, Response, stream_with_context
+from flask_cors import CORS
 import openai
 import os
 import uuid
-import time # 지수 백오프를 위한 time 모듈 추가
+import time
+import json # JSON 파싱을 위해 추가
 
 app = Flask(__name__)
 CORS(app) # 모든 경로에 대해 CORS 허용
 
 # --- Azure OpenAI Service 설정 ---
-# 환경 변수에서 API 키와 엔드포인트 로드 (보안을 위해 Key Vault 사용 권장)
-# Azure App Service에 배포 시, 구성(Configuration) -> 애플리케이션 설정(Application settings)에서 설정합니다.
-# 예: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT_NAME
 try:
     openai.api_type = "azure"
     openai.api_base = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -27,26 +24,26 @@ except Exception as e:
     # 프로덕션 환경에서는 앱 시작 실패 처리 또는 기본 응답 설정
 
 # --- 인메모리 대화 기록 (간단한 세션 관리) ---
-# 이 방식은 서버 재시작 시 데이터가 사라집니다.
-# 프로덕션 환경에서는 Azure Cosmos DB와 같은 영구 데이터베이스를 사용해야 합니다.
 chat_histories = {}
 
-# --- AOAI API 호출 함수 (지수 백오프 포함) ---
-def call_aoai_with_retry(messages, max_retries=5, initial_delay=1.0):
+# --- AOAI API 호출 함수 (지수 백오프 및 스트리밍 지원) ---
+# 스트리밍 시에는 제너레이터를 반환합니다.
+def call_aoai_with_retry(messages, stream=False, max_retries=5, initial_delay=1.0):
     delay = initial_delay
     for i in range(max_retries):
         try:
             response = openai.chat.completions.create(
                 model=DEPLOYMENT_NAME,
                 messages=messages,
-                temperature=0.7, # 창의성 조절 (0.0-1.0)
-                max_tokens=800, # 최대 응답 길이
+                temperature=0.7,
+                max_tokens=800,
                 top_p=0.95,
                 frequency_penalty=0,
                 presence_penalty=0,
-                stop=None
+                stop=None,
+                stream=stream # 스트리밍 활성화
             )
-            return response.choices[0].message.content
+            return response # 스트림이면 제너레이터 객체, 아니면 응답 객체
         except openai.APITimeoutError as e:
             app.logger.warning(f"AOAI API 호출 시간 초과 (시도 {i+1}/{max_retries}): {e}")
         except openai.APIConnectionError as e:
@@ -57,17 +54,17 @@ def call_aoai_with_retry(messages, max_retries=5, initial_delay=1.0):
                 app.logger.warning(f"Too Many Requests (429), 재시도 예정. 지연: {delay}초")
             else:
                 app.logger.error(f"예상치 못한 AOAI API 오류 (상태 코드: {e.status_code}): {e}")
-                break # 429 외 다른 치명적인 오류는 재시도하지 않음
+                break
         except Exception as e:
             app.logger.error(f"알 수 없는 AOAI 호출 오류: {e}")
-            break # 알 수 없는 오류는 재시도하지 않음
+            break
 
         if i < max_retries - 1:
             time.sleep(delay)
-            delay *= 2 # 지수 백오프 (2배 증가)
-    return None # 모든 재시도 실패
+            delay *= 2
+    return None
 
-# --- 챗봇 API 엔드포인트 ---
+# --- 챗봇 API 엔드포인트 (스트리밍 지원) ---
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
@@ -77,34 +74,42 @@ def chat():
     if not user_message or not session_id:
         return jsonify({"error": "메시지 또는 세션 ID가 누락되었습니다."}), 400
 
-    # 세션 ID를 사용하여 대화 기록 가져오기
-    # 새로운 세션이면 빈 리스트 초기화
     if session_id not in chat_histories:
         chat_histories[session_id] = [
-            {"role": "system", "content": "You are a helpful and friendly assistant. Respond in Korean."}
+            {"role": "system", "content": "You are a helpful and friendly assistant. Respond in Korean. Use markdown for formatting like **bold**, ### headers, and ```code``` blocks."},
+            # 시스템 메시지: 마크다운 사용을 명시적으로 지시
         ]
-        # 시스템 메시지는 최초 1회만 추가 (새로운 세션일 경우)
 
-    # 사용자 메시지를 대화 기록에 추가
     chat_histories[session_id].append({"role": "user", "content": user_message})
 
-    try:
-        # AOAI 호출 (대화 기록 전달)
-        # AOAI의 토큰 제한에 유의하며, 너무 긴 대화 기록은 잘라내야 할 수 있습니다.
-        # 이 예제에서는 단순화를 위해 모든 기록을 전달합니다.
-        aoai_response_content = call_aoai_with_retry(chat_histories[session_id])
+    def generate_stream():
+        # AOAI 호출 (스트리밍 활성화)
+        # 이 예제에서는 단순화를 위해 모든 기록을 전달합니다. 토큰 제한 고려 필요.
+        stream_response = call_aoai_with_retry(chat_histories[session_id], stream=True)
 
-        if aoai_response_content is None:
-            return jsonify({"error": "AI 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요."}), 500
+        if stream_response is None:
+            yield json.dumps({"error": "AI 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요."}) + "\n"
+            return
 
-        # AI 응답을 대화 기록에 추가
-        chat_histories[session_id].append({"role": "assistant", "content": aoai_response_content})
+        full_response_content = ""
+        try:
+            for chunk in stream_response:
+                # 각 청크에서 델타 콘텐츠 추출
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_response_content += content
+                    yield content # 프론트엔드로 직접 콘텐츠를 보냄
+        except Exception as e:
+            app.logger.error(f"스트리밍 중 오류 발생: {e}")
+            yield json.dumps({"error": f"스트리밍 오류: {e}"}) + "\n"
+        finally:
+            # 스트림이 끝난 후 전체 응답을 대화 기록에 추가
+            if session_id in chat_histories: # 세션이 아직 존재하는지 확인
+                chat_histories[session_id].append({"role": "assistant", "content": full_response_content})
 
-        return jsonify({"response": aoai_response_content})
-
-    except Exception as e:
-        app.logger.error(f"챗봇 처리 중 오류 발생: {e}")
-        return jsonify({"error": "챗봇 서비스에 문제가 발생했습니다. 관리자에게 문의하세요."}), 500
+    # Event Stream (text/event-stream) 대신 일반 text/plain으로 단순화하여 직접 텍스트 청크를 보냄
+    # 프론트엔드에서 SSE 파서 없이도 처리 가능하도록
+    return Response(stream_with_context(generate_stream()), mimetype='text/plain')
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -112,6 +117,4 @@ def health_check():
     return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
-    # 로컬 테스트를 위한 실행 (프로덕션에서는 Gunicorn 등 WSGI 서버 사용)
-    # App Service는 Gunicorn을 자동으로 사용합니다.
     app.run(host='0.0.0.0', port=os.getenv('PORT', 8000))
