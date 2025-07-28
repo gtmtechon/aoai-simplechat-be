@@ -115,8 +115,3 @@ if __name__ == '__main__':
     # 로컬 테스트를 위한 실행 (프로덕션에서는 Gunicorn 등 WSGI 서버 사용)
     # App Service는 Gunicorn을 자동으로 사용합니다.
     app.run(host='0.0.0.0', port=os.getenv('PORT', 8000))
-```
-# requirements.txt
-Flask==2.3.3
-Flask-Cors==4.0.0
-openai==1.35.13 # 최신 버전으로 업데이트될 수 있음
