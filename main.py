@@ -6,7 +6,7 @@ import os
 import uuid
 import time # 지수 백오프를 위한 time 모듈 추가
 
-app = Flask(__name__)
+application = Flask(__name__)
 CORS(app) # 모든 경로에 대해 CORS 허용
 
 # --- Azure OpenAI Service 설정 ---
